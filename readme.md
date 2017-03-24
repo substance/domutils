@@ -1,3 +1,1 @@
-Utilities for working with htmlparser2's dom
-
-[![Build Status](https://travis-ci.org/fb55/domutils.svg?branch=master)](https://travis-ci.org/fb55/domutils)
+A custom DOM adapter based on [fb55/domutils](https://github.com/fb55/domutils) for [substance-dom](https://github.com/substance/dom).
