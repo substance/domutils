@@ -176,7 +176,7 @@ export default class DomUtils {
         if(--limit <= 0) break;
       }
 
-      childs = elems[i].childNodes;
+      childs = this.getChildren(elems[i]);
       if(recurse && childs && childs.length > 0){
         childs = this.find(test, childs, recurse, limit);
         result = result.concat(childs);
@@ -205,8 +205,11 @@ export default class DomUtils {
         continue;
       } else if(test(child)){
         elem = child;
-      } else if(child.childNodes.length > 0){
-        elem = this.findOne(test, child.childNodes);
+      } else {
+        const childNodes = this.getChildren(child)
+        if (childNodes.length > 0) {
+          elem = this.findOne(test, childNodes);
+        }
       }
     }
 
@@ -215,41 +218,40 @@ export default class DomUtils {
 
   existsOne(test, elems){
     for(var i = 0, l = elems.length; i < l; i++){
-      if(
-        this.isTag(elems[i]) && (
-          test(elems[i]) || (
-            elems[i].childNodes.length > 0 &&
-            this.existsOne(test, elems[i].childNodes)
-          )
-        )
-      ){
-        return true;
-      }
+      const elem = elems[i]
+      // test only elements
+      if (!this.isTag(elem)) continue
+      // found if the element itself matches
+      if (test(elem)) return true
+      // otherwise, if one of its children matches
+      const childNodes = this.getChildren(elem)
+      if (childNodes.length > 0 && this.existsOne(test, childNodes)) return true
     }
-
     return false;
   }
 
   findAll(test, elems){
     var result = [];
     for(var i = 0, j = elems.length; i < j; i++){
-      if(!this.isTag(elems[i])) continue;
-      if(test(elems[i])) result.push(elems[i]);
-
-      if(elems[i].childNodes.length > 0){
-        result = result.concat(this.findAll(test, elems[i].childNodes));
+      const elem = elems[i]
+      if(!this.isTag(elem)) continue;
+      if(test(elem)) result.push(elem);
+      const childNodes = this.getChildren(elem)
+      if(childNodes.length > 0){
+        result = result.concat(this.findAll(test, childNodes));
       }
     }
     return result;
   }
 
-
+  getAttributes(el) {
+    return Array.from(el.attributes)
+  }
 
   formatAttribs(el, opts) {
     let output = [];
-    const attributes = el.attributes;
-
-    attributes.forEach((value, key) => {
+    const attributes = this.getAttributes(el)
+    attributes.forEach(([key, value]) => {
       if (!value && booleanAttributes[key]) {
         output.push(key);
       } else {
@@ -262,14 +264,11 @@ export default class DomUtils {
   render(dom, opts) {
     if (!Array.isArray(dom)) dom = [dom];
     opts = opts || {};
-
     let output = [];
-
     for(var i = 0; i < dom.length; i++){
       let elem = dom[i];
-
       if (elem.type === 'root') {
-        output.push(this.render(elem.childNodes, opts));
+        output.push(this.render(this.getChildren(elem), opts));
       } else if (ElementType.isTag(elem)) {
         output.push(this.renderTag(elem, opts));
       } else if (elem.type === ElementType.Directive) {
@@ -282,69 +281,69 @@ export default class DomUtils {
         output.push(this.renderText(elem, opts));
       }
     }
-
     return output.join('')
   }
 
   renderTag(elem, opts) {
-
-    if (elem.name === "svg") opts = {decodeEntities: opts.decodeEntities, xmlMode: true};
-
-    let tag = '<' + elem.name;
+    const name = this.getName(elem)
+    if (name === "svg") opts = {decodeEntities: opts.decodeEntities, xmlMode: true};
+    let tag = '<' + name
     let attribs = this.formatAttribs(elem, opts);
-
     if (attribs) {
       tag += ' ' + attribs;
     }
-
-    if (
-      opts.xmlMode
-      && (!elem.childNodes || elem.childNodes.length === 0)
-    ) {
+    const childNodes = this.getChildren(elem)
+    if (opts.xmlMode && childNodes.length === 0) {
       tag += '/>';
     } else {
       tag += '>';
-      if (elem.childNodes) {
-        tag += this.render(elem.childNodes, opts);
+      if (childNodes.length > 0) {
+        tag += this.render(childNodes, opts);
       }
-
-      if (!singleTag[elem.name] || opts.xmlMode) {
-        tag += '</' + elem.name + '>';
+      if (!singleTag[name] || opts.xmlMode) {
+        tag += '</' + name + '>';
       }
     }
-
     return tag
   }
 
   renderDirective(elem) {
-    return '<' + elem.data + '>'
+    return '<' + this.getData(elem) + '>'
   }
 
   renderText(elem, opts) {
-    var data = elem.data || '';
-
-    if (opts.decodeEntities && !(elem.parent && elem.parent.name in unencodedElements)) {
-      data = entities.encodeXML(data);
+    let text = this.getText(elem);
+    if (opts.decodeEntities) {
+      const parent = this.getParent(elem)
+      if (!(parent && this.getName(parent) in unencodedElements)) {
+        text = entities.encodeXML(text);
+      }
     }
-    return data
+    return text
   }
 
   renderCdata(elem) {
-    return '<![CDATA[' + elem.childNodes[0].data + ']]>'
+    const childNodes = this.getChildren(elem)
+    return '<![CDATA[' + this.getData(childNodes[0]) + ']]>'
   }
 
   renderComment(elem) {
-    return '<!--' + elem.data + '-->'
+    return '<!--' + this.getData(elem) + '-->'
   }
 
   getInnerHTML(elem, opts){
-    return elem.childNodes ? elem.childNodes.map((elem) => {
-      return this.render(elem, opts);
-    }).join("") : "";
+    const childNodes = this.getChildren(elem)
+    return childNodes.map((child) => {
+      return this.render(child, opts);
+    }).join("")
   }
 
   getOuterHTML(elem, opts) {
     return this.render(elem, opts)
+  }
+
+  getData(elem) {
+    return elem.data
   }
 
   getText(elem){
@@ -353,7 +352,7 @@ export default class DomUtils {
       case ElementType.Tag:
       case ElementType.Script:
       case ElementType.Style:
-        return this.getText(elem.childNodes)
+        return this.getText(this.getChildren(elem))
       case ElementType.Text:
       case ElementType.Comment:
       case ElementType.CDATA:
