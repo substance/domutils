@@ -1,5 +1,90 @@
 import ElementType from 'domelementtype';
-import entities from 'entities';
+
+/*
+  EXPERIMENTAL:
+
+  We found out that using the encoder from `entities` module
+  is doing too much
+
+  Instead we do a simpler version now, encoding just a small
+  set:
+  - in attributes we only need to escape '"'
+  - in textContent we need to escape '<' and '&'
+
+  TODO: this is copy and pasted from the bundled entities vendor file
+*/
+// import entities from 'entities';
+
+const _encodeXMLContent = ((obj) => {
+  let invObj = getInverseObj(obj)
+  let replacer = getInverseReplacer(invObj)
+  return getInverse(invObj, replacer)
+})({
+  amp: "&",
+  gt: ">",
+  lt: "<",
+})
+
+const _encodeXMLAttr = ((obj) => {
+  let invObj = getInverseObj(obj)
+  let replacer = getInverseReplacer(invObj)
+  return getInverse(invObj, replacer)
+})({
+  quot: "\"",
+})
+
+function getInverseObj(obj){
+  return Object.keys(obj).sort().reduce(function(inverse, name){
+    inverse[obj[name]] = "&" + name + ";";
+    return inverse;
+  }, {});
+}
+
+function getInverseReplacer(inverse){
+  var single = [],
+    multiple = [];
+
+  Object.keys(inverse).forEach(function(k){
+    if(k.length === 1){
+      single.push("\\" + k);
+    } else {
+      multiple.push(k);
+    }
+  });
+
+
+  multiple.unshift("[" + single.join("") + "]");
+
+  return new RegExp(multiple.join("|"), "g");
+}
+
+var re_nonASCII = /[^\0-\x7F]/g;
+var re_astralSymbols = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g;
+
+function singleCharReplacer(c){
+  return "&#x" + c.charCodeAt(0).toString(16).toUpperCase() + ";";
+}
+
+function astralReplacer(c){
+
+  var high = c.charCodeAt(0);
+  var low = c.charCodeAt(1);
+  var codePoint = (high - 0xD800) * 0x400 + low - 0xDC00 + 0x10000;
+  return "&#x" + codePoint.toString(16).toUpperCase() + ";";
+}
+
+function getInverse(inverse, re){
+  function func(name){
+    return inverse[name];
+  }
+  return function(data){
+    return data
+        .replace(re, func)
+        .replace(re_astralSymbols, astralReplacer)
+        .replace(re_nonASCII, singleCharReplacer);
+  };
+}
+
 
 const booleanAttributes = {
   __proto__: null,
@@ -268,7 +353,7 @@ export default class DomUtils {
       if (!value && booleanAttributes[key]) {
         output.push(key);
       } else {
-        output.push(key + '="' + (opts.decodeEntities ? entities.encodeXML(value) : value) + '"');
+        output.push(key + '="' + (opts.decodeEntities ? _encodeXMLAttr(value) : value) + '"');
       }
     });
     return output.join(' ')
@@ -329,7 +414,7 @@ export default class DomUtils {
     if (opts.decodeEntities) {
       const parent = this.getParent(elem)
       if (!(parent && this.getName(parent) in unencodedElements)) {
-        text = entities.encodeXML(text);
+        text = _encodeXMLContent(text);
       }
     }
     return text
