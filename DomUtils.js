@@ -421,8 +421,7 @@ export default class DomUtils {
   }
 
   renderCdata(elem) {
-    const childNodes = this.getChildren(elem)
-    return '<![CDATA[' + this.getData(childNodes[0]) + ']]>'
+    return '<![CDATA[' + this.getData(elem) + ']]>'
   }
 
   renderComment(elem) {
